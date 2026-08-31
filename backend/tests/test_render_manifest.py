@@ -8,8 +8,9 @@ from zoneinfo import ZoneInfo
 from PIL import Image
 
 from backend.curate import deterministic_edition
+from backend.generate import _generation_id
 from backend.models import Manifest, ManifestPage
-from backend.render import E6_COLORS, HEIGHT, RAW_PAGE_SIZE, WIDTH, render_edition
+from backend.render import BLACK, E6_COLORS, HEIGHT, RAW_PAGE_SIZE, WHITE, WIDTH, render_edition
 
 
 def test_render_six_exact_pages(tmp_path: Path, source_stories) -> None:
@@ -20,7 +21,10 @@ def test_render_six_exact_pages(tmp_path: Path, source_stories) -> None:
     for preview_path, raw_path in rendered:
         with Image.open(preview_path) as image:
             assert image.size == (WIDTH, HEIGHT)
-            assert set(image.convert("RGB").get_flattened_data()).issubset(allowed)
+            colors = set(image.convert("RGB").get_flattened_data())
+            assert colors.issubset(allowed)
+            assert colors.issubset({WHITE, BLACK, E6_COLORS[1], E6_COLORS[2], E6_COLORS[4]})
+            assert E6_COLORS[3] not in colors  # No low-contrast yellow text or accents.
         assert raw_path.stat().st_size == RAW_PAGE_SIZE
 
 
@@ -48,3 +52,10 @@ def test_manifest_has_six_valid_urls_and_hashes(tmp_path: Path, source_stories) 
     assert manifest.page_count == 6
     assert len(manifest.pages) == 6
     assert all(page.url.startswith("pages/") for page in manifest.pages)
+
+
+def test_generation_changes_when_rendered_bytes_change() -> None:
+    payload = {"stories": [{"id": "same-content"}]}
+    first = _generation_id("2026-08-31", payload, ["a" * 64])
+    second = _generation_id("2026-08-31", payload, ["b" * 64])
+    assert first != second

@@ -29,7 +29,7 @@ E6_COLORS: Final[list[tuple[int, int, int]]] = [
 E6_CODES: Final[list[int]] = [0x0, 0x2, 0x6, 0xB, 0xD, 0xF]
 BLACK = E6_COLORS[5]
 WHITE = E6_COLORS[0]
-ACCENTS = [E6_COLORS[4], E6_COLORS[2], E6_COLORS[1], E6_COLORS[3]]
+ACCENTS = [E6_COLORS[4], E6_COLORS[2], E6_COLORS[1]]
 
 
 def find_cjk_font() -> str:
@@ -99,6 +99,8 @@ def _draw_story(
     top: int,
     font_path: str,
 ) -> None:
+    # Yellow is too low-contrast for small Chinese type. Blue, red and green
+    # remain useful category accents; body text and metadata stay black.
     accent = _category_color(story.category)
     category_font = _font(font_path, 17)
     title_font = _font(font_path, 25)

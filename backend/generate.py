@@ -37,8 +37,13 @@ def _sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
-def _generation_id(issue_date: str, curated_payload: dict[str, object]) -> str:
-    canonical = json.dumps(curated_payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+def _generation_id(issue_date: str, curated_payload: dict[str, object], page_hashes: list[str]) -> str:
+    canonical = json.dumps(
+        {"edition": curated_payload, "page_hashes": page_hashes},
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
     digest = hashlib.sha256(canonical.encode("utf-8")).hexdigest()[:12]
     return f"{issue_date}-{digest}"
 
@@ -93,7 +98,9 @@ def generate(
             generated_at=now,
             source_issue=primary.url,
             source_issues=[issue.url for issue in source_issues],
-            generation_id=_generation_id(primary.issue_date.isoformat(), curated_payload),
+            generation_id=_generation_id(
+                primary.issue_date.isoformat(), curated_payload, [page.sha256 for page in pages]
+            ),
             pages=pages,
         )
         if manifest.page_count != PAGE_COUNT or len(manifest.pages) != PAGE_COUNT:
@@ -123,4 +130,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

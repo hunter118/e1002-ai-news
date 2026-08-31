@@ -13,4 +13,7 @@ firmware/include/config.h
 firmware/.pio/
 firmware/.vscode/
 
+# Separate Sites source repository (deployed independently).
+gallery-admin/
+
 .DS_Store
