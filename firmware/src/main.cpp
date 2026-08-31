@@ -67,6 +67,7 @@ struct ModeState {
               const char *preferenceKeyValue,
               uint8_t requiredPageCountValue,
               bool allowEmptyValue,
+              bool allowIntervalOffValue,
               uint32_t defaultIntervalValue)
         : displayLabel(displayLabelValue),
           directoryPrefix(directoryPrefixValue),
@@ -75,6 +76,7 @@ struct ModeState {
           preferenceKey(preferenceKeyValue),
           requiredPageCount(requiredPageCountValue),
           allowEmpty(allowEmptyValue),
+          allowIntervalOff(allowIntervalOffValue),
           defaultIntervalMs(defaultIntervalValue),
           intervalMs(defaultIntervalValue) {}
 
@@ -85,6 +87,7 @@ struct ModeState {
     const char *preferenceKey;
     uint8_t requiredPageCount;
     bool allowEmpty;
+    bool allowIntervalOff;
     uint32_t defaultIntervalMs;
     String activeSlot;
     String activeGeneration;
@@ -131,9 +134,10 @@ bool displayRefreshing = false;
 bool filesystemReady = false;
 DisplayMode currentMode = DisplayMode::News;
 uint32_t lastUpdateCheckAt = 0;
-ModeState newsState("NEWS", "news", NEWS_BASE_URL, "manifest.json", "news_slot", 6, false, NEWS_INTERVAL_MS);
+ModeState newsState(
+    "NEWS", "news", NEWS_BASE_URL, "manifest.json", "news_slot", 6, false, false, NEWS_INTERVAL_MS);
 ModeState galleryState(
-    "PHOTO ALBUM", "photo", GALLERY_BASE_URL, "api/gallery/manifest", "photo_slot", 0, true, GALLERY_INTERVAL_MS);
+    "PHOTO ALBUM", "photo", GALLERY_BASE_URL, "manifest.json", "photo_slot", 0, true, true, GALLERY_INTERVAL_MS);
 DebouncedButton previousButton(PIN_PREVIOUS);
 DebouncedButton nextButton(PIN_NEXT);
 DebouncedButton modeButton(PIN_MODE);
@@ -167,7 +171,8 @@ bool validPageCount(const ModeState &state, int count) {
     return state.allowEmpty ? true : count > 0;
 }
 
-uint32_t validInterval(uint32_t value, uint32_t fallback) {
+uint32_t validInterval(const ModeState &state, uint32_t value, uint32_t fallback) {
+    if (state.allowIntervalOff && value == 0) return 0;
     return value >= MIN_INTERVAL_MS && value <= MAX_INTERVAL_MS ? value : fallback;
 }
 
@@ -193,7 +198,7 @@ bool validLocalSlot(
     }
     generation = generationValue;
     pageCount = static_cast<uint8_t>(count);
-    intervalMs = validInterval(document["interval_ms"] | state.defaultIntervalMs, state.defaultIntervalMs);
+    intervalMs = validInterval(state, document["interval_ms"] | state.defaultIntervalMs, state.defaultIntervalMs);
     return true;
 }
 
@@ -256,7 +261,8 @@ bool parseManifest(const String &payload, ModeState &state, RemoteManifest &mani
     manifest.generationId = generation;
     manifest.rawJson = payload;
     manifest.pageCount = static_cast<uint8_t>(count);
-    manifest.intervalMs = validInterval(document["interval_ms"] | state.defaultIntervalMs, state.defaultIntervalMs);
+    manifest.intervalMs =
+        validInterval(state, document["interval_ms"] | state.defaultIntervalMs, state.defaultIntervalMs);
     for (int index = 0; index < count; ++index) {
         JsonObject page = pages[index].as<JsonObject>();
         const char *url = page["url"] | "";
@@ -582,7 +588,7 @@ void loop() {
     const uint32_t now = millis();
     ModeState &state = activeState();
     if (!displayRefreshing && state.pageCount > 0 &&
-        intervalElapsed(state.intervalStartedAt, now, state.intervalMs)) {
+        automaticAdvanceDue(state.intervalStartedAt, now, state.intervalMs)) {
         LOG.printf("[timer] %s automatic next page\n", state.directoryPrefix);
         navigate(1, "automatic");
     }

@@ -1,0 +1,48 @@
+name: Sync E1002 gallery
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: gallery-sync
+  cancel-in-progress: true
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out validator
+        uses: actions/checkout@v7
+        with:
+          path: source
+
+      - name: Check out gallery delivery branch
+        uses: actions/checkout@v7
+        with:
+          ref: gallery
+          path: publish
+
+      - name: Download and validate gallery
+        run: |
+          python source/backend/sync_gallery.py \
+            --source https://e1002-gallery.jlombelkf0x.chatgpt.site/api/gallery/manifest \
+            --output "$RUNNER_TEMP/gallery"
+
+      - name: Publish a history-free snapshot only when changed
+        run: |
+          if diff -qr --exclude=.git "$RUNNER_TEMP/gallery" publish; then
+            echo "Gallery is already current"
+          else
+            git -C publish config user.name "github-actions[bot]"
+            git -C publish config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git -C publish switch --orphan gallery-snapshot
+            cp -R "$RUNNER_TEMP/gallery/." publish/
+            git -C publish add -A
+            git -C publish commit -m "Sync current gallery snapshot"
+            git -C publish push --force origin HEAD:gallery
+          fi

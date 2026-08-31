@@ -13,8 +13,9 @@ flowchart LR
     E --> F[6 x 800x480 PNG previews<br>+ native 4bpp E1002 pages]
     F --> G[GitHub Pages<br>manifest.json + page files]
     G --> H[E1002 news A/B cache]
-    J[Sites album manager] --> K[Public gallery manifest<br>+ R2 photo pages]
-    K --> L[E1002 gallery A/B cache]
+    J[Sites album manager<br>D1 + R2] --> K[5-minute validated sync]
+    K --> P[GitHub gallery branch<br>manifest + page files]
+    P --> L[E1002 gallery A/B cache]
     H --> I[Spectra 6 display]
     L --> I
     M[LEFT GPIO5<br>previous] --> I
@@ -151,15 +152,23 @@ Repository setup:
 
 The workflow tests first, generates into `public/`, checks asset counts and sizes, and only then uploads a Pages artifact. If RSS, OpenAI, validation, or rendering fails, deployment does not run and the previously deployed edition remains available.
 
+## Gallery management site
+
+The independently deployed Sites app is [E1002 Gallery Console](https://e1002-gallery.jlombelkf0x.chatgpt.site/). Photo management is under `/admin`, requires Sign in with ChatGPT, and is restricted to the owner who claimed the initial private deployment. Public visitors can read the gallery output but cannot mutate it.
+
+The browser center-crops uploads to 800×480, converts them with Floyd–Steinberg six-color dithering, and uploads a PNG preview plus an exact 192,000-byte device page. D1 stores order, interval, hashes, and ownership; R2 stores the two image assets. Add/delete/reorder/interval changes all advance the gallery generation ID.
+
+Because the `chatgpt.site` edge can require a browser challenge on this network, the ESP32 does not fetch it directly. `.github/workflows/gallery-sync.yml` polls the public read-only manifest every five minutes, validates page count, size, SHA-256, and every 4-bit color code, then mirrors only valid `.epd` output to the orphan `gallery` branch. Each update force-replaces that branch with one current root snapshot instead of building browsable history. The device reads `https://raw.githubusercontent.com/hunter118/e1002-ai-news/gallery/manifest.json`. GitHub's repository-scoped Actions token performs the mirror; no personal GitHub token or API key is stored in the site or firmware.
+
 ## Firmware configuration, build, and flash
 
-Copy `firmware/include/config.example.h` to the gitignored `firmware/include/config.h`, then set a 2.4 GHz Wi-Fi SSID/password, the news Pages URL, and the gallery Sites URL:
+Copy `firmware/include/config.example.h` to the gitignored `firmware/include/config.h`, then set a 2.4 GHz Wi-Fi SSID/password, the news Pages URL, and the validated gallery mirror URL:
 
 ```cpp
 #define WIFI_SSID "..."
 #define WIFI_PASSWORD "..."
 #define NEWS_BASE_URL "https://hunter118.github.io/e1002-ai-news/"
-#define GALLERY_BASE_URL "https://YOUR-GALLERY-SITE.example/"
+#define GALLERY_BASE_URL "https://raw.githubusercontent.com/hunter118/e1002-ai-news/gallery/"
 ```
 
 Build command used successfully on this Mac:
@@ -181,7 +190,7 @@ E1001/E1002 USB is connected through a CH340 bridge to UART0. The application th
 
 At boot the firmware mounts LittleFS, loads the last complete news and gallery caches, connects Wi-Fi, and checks both manifests. A brand-new or unreadable cache partition is formatted only after a logged mount failure. Each mode has independent A/B slots. Every page must have the expected length and SHA-256; only after a whole generation validates does one NVS value atomically switch that mode's active slot. A partial download is discarded while the old complete slot remains untouched.
 
-The synchronous e-paper refresh is guarded by `displayRefreshing`, so button and timer events cannot overlap a refresh. News rotates every ten minutes; the album interval comes from the management page. Both timers restart after the slow physical refresh finishes. LEFT/MIDDLE wrap through the active mode's pages, while RIGHT switches between news and gallery.
+The synchronous e-paper refresh is guarded by `displayRefreshing`, so button and timer events cannot overlap a refresh. News rotates every ten minutes; the album interval comes from the management page and may be set to `0` to disable automatic paging permanently. Active timers restart after the slow physical refresh finishes. LEFT/MIDDLE wrap through the active mode's pages, while RIGHT switches between news and gallery.
 
 No SD card is required. One cached device page is exactly 192,000 bytes. Ten gallery pages need 1.92 MB, or 3.84 MB while old and new A/B generations coexist. News A/B adds about 2.30 MB, for roughly 6.14 MB total. The device reserves a 28 MB LittleFS partition, so the current 20-photo firmware limit remains comfortably within internal flash capacity.
 

@@ -4,7 +4,6 @@
 #define WIFI_PASSWORD "YOUR_WIFI_PASSWORD"
 
 // Both URLs must end with a slash.
-// The device appends manifest.json to the news URL and
-// api/gallery/manifest to the gallery URL.
+// The device appends manifest.json to both delivery URLs.
 #define NEWS_BASE_URL "https://USERNAME.github.io/REPOSITORY/"
-#define GALLERY_BASE_URL "https://YOUR-GALLERY-SITE.example/"
+#define GALLERY_BASE_URL "https://raw.githubusercontent.com/USERNAME/REPOSITORY/gallery/"

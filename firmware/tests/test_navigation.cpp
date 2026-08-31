@@ -18,5 +18,8 @@ int main() {
     assert(intervalElapsed(1000, 1000 + 600000, 600000));
     // Unsigned subtraction keeps the timer correct across millis() rollover.
     assert(intervalElapsed(UINT32_MAX - 100, 100, 150));
+    assert(!automaticAdvanceDue(1000, UINT32_MAX, 0));
+    assert(!automaticAdvanceDue(1000, 1999, 1000));
+    assert(automaticAdvanceDue(1000, 2000, 1000));
     return 0;
 }
