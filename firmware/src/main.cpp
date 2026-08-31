@@ -6,6 +6,8 @@
 #include <Preferences.h>
 #include <WiFi.h>
 #include <WiFiClientSecure.h>
+#include <driver/rtc_io.h>
+#include <esp_sleep.h>
 #include <mbedtls/sha256.h>
 
 #include "config.h"
@@ -28,6 +30,8 @@ constexpr uint32_t GALLERY_INTERVAL_MS = 30UL * 1000UL;
 constexpr uint32_t MIN_INTERVAL_MS = 10UL * 1000UL;
 constexpr uint32_t MAX_INTERVAL_MS = 24UL * 60UL * 60UL * 1000UL;
 constexpr uint32_t UPDATE_CHECK_MS = 60UL * 60UL * 1000UL;
+constexpr uint32_t BUTTON_AWAKE_MS = 3UL * 60UL * 1000UL;
+constexpr uint32_t MIN_DEEP_SLEEP_MS = 1000;
 constexpr uint32_t WIFI_TIMEOUT_MS = 15000;
 constexpr uint32_t HTTP_TIMEOUT_MS = 20000;
 constexpr uint32_t DOWNLOAD_STALL_TIMEOUT_MS = 15000;
@@ -39,6 +43,9 @@ constexpr uint8_t PIN_MODE = 3;     // Physical right, KEY0, active LOW.
 constexpr uint8_t PIN_SERIAL_RX = 44;
 constexpr uint8_t PIN_SERIAL_TX = 43;
 constexpr const char *LITTLEFS_PARTITION_LABEL = "littlefs";
+constexpr uint32_t RETAINED_STATE_MAGIC = 0xE1002A17;
+constexpr uint64_t BUTTON_WAKE_MASK =
+    (1ULL << PIN_PREVIOUS) | (1ULL << PIN_NEXT) | (1ULL << PIN_MODE);
 
 #define LOG Serial1
 
@@ -97,6 +104,18 @@ struct ModeState {
     uint32_t intervalStartedAt = 0;
 };
 
+struct RetainedState {
+    uint32_t magic = 0;
+    uint8_t mode = 0;
+    uint8_t newsPage = 0;
+    uint8_t galleryPage = 0;
+    uint8_t pageMode = 0;
+    uint32_t pageIntervalMs = 0;
+    uint32_t pageRemainingMs = 0;
+    uint32_t updateRemainingMs = UPDATE_CHECK_MS;
+    uint32_t scheduledSleepMs = 0;
+};
+
 class DebouncedButton {
 public:
     explicit DebouncedButton(uint8_t pin) : pin_(pin) {}
@@ -130,10 +149,12 @@ private:
 
 EPaper display;
 Preferences preferences;
+RTC_DATA_ATTR RetainedState retainedState;
 bool displayRefreshing = false;
 bool filesystemReady = false;
+bool interactiveSession = false;
 DisplayMode currentMode = DisplayMode::News;
-uint32_t lastUpdateCheckAt = 0;
+uint32_t lastButtonActivityAt = 0;
 ModeState newsState(
     "NEWS", "news", NEWS_BASE_URL, "manifest.json", "news_slot", 6, false, false, NEWS_INTERVAL_MS);
 ModeState galleryState(
@@ -143,6 +164,37 @@ DebouncedButton nextButton(PIN_NEXT);
 DebouncedButton modeButton(PIN_MODE);
 
 ModeState &activeState() { return currentMode == DisplayMode::News ? newsState : galleryState; }
+
+uint8_t modeValue() { return currentMode == DisplayMode::News ? 0 : 1; }
+
+uint32_t activeAutoInterval() {
+    ModeState &state = activeState();
+    return state.pageCount > 1 ? state.intervalMs : 0;
+}
+
+void restoreRetainedNavigation() {
+    currentMode = retainedState.mode == 1 ? DisplayMode::Gallery : DisplayMode::News;
+    if (newsState.pageCount > 0) {
+        newsState.currentPage = min(retainedState.newsPage, static_cast<uint8_t>(newsState.pageCount - 1));
+    }
+    if (galleryState.pageCount > 0) {
+        galleryState.currentPage =
+            min(retainedState.galleryPage, static_cast<uint8_t>(galleryState.pageCount - 1));
+    }
+}
+
+void resetPageCountdown() {
+    retainedState.pageMode = modeValue();
+    retainedState.pageIntervalMs = activeAutoInterval();
+    retainedState.pageRemainingMs = retainedState.pageIntervalMs;
+}
+
+void saveRetainedNavigation() {
+    retainedState.magic = RETAINED_STATE_MAGIC;
+    retainedState.mode = modeValue();
+    retainedState.newsPage = newsState.currentPage;
+    retainedState.galleryPage = galleryState.currentPage;
+}
 
 String slotDirectory(const ModeState &state, const String &slot) {
     return "/" + String(state.directoryPrefix) + "_" + slot;
@@ -544,16 +596,120 @@ void switchMode() {
     showActiveMode();
 }
 
-void refreshUpdates() {
-    const UpdateResult news = checkForUpdate(newsState);
-    const UpdateResult gallery = checkForUpdate(galleryState);
+void ensurePageCountdownMatchesMode() {
+    const uint32_t interval = activeAutoInterval();
+    if (retainedState.pageMode != modeValue() || retainedState.pageIntervalMs != interval) {
+        resetPageCountdown();
+    }
+}
+
+void releaseRtcButtonPins() {
+    rtc_gpio_deinit(static_cast<gpio_num_t>(PIN_PREVIOUS));
+    rtc_gpio_deinit(static_cast<gpio_num_t>(PIN_NEXT));
+    rtc_gpio_deinit(static_cast<gpio_num_t>(PIN_MODE));
+}
+
+[[noreturn]] void enterDeepSleep() {
+    ensurePageCountdownMatchesMode();
+    if (retainedState.updateRemainingMs == 0) retainedState.updateRemainingMs = UPDATE_CHECK_MS;
+    uint32_t sleepMs = earliestWakeDelay(
+        retainedState.updateRemainingMs, retainedState.pageRemainingMs);
+    sleepMs = max(sleepMs, MIN_DEEP_SLEEP_MS);
+    retainedState.scheduledSleepMs = sleepMs;
+    saveRetainedNavigation();
+
     powerDownWiFi();
-    ModeState &state = activeState();
+    display.sleep();
+    preferences.end();
+    LittleFS.end();
+
+    // Avoid an immediate wake loop if the user is still releasing a button.
+    const uint32_t releaseStartedAt = millis();
+    while ((digitalRead(PIN_PREVIOUS) == LOW || digitalRead(PIN_NEXT) == LOW ||
+            digitalRead(PIN_MODE) == LOW) &&
+           !intervalElapsed(releaseStartedAt, millis(), 2000)) {
+        delay(10);
+    }
+
+    esp_sleep_enable_timer_wakeup(static_cast<uint64_t>(sleepMs) * 1000ULL);
+    esp_sleep_pd_config(ESP_PD_DOMAIN_RTC_PERIPH, ESP_PD_OPTION_ON);
+    rtc_gpio_pullup_en(static_cast<gpio_num_t>(PIN_PREVIOUS));
+    rtc_gpio_pulldown_dis(static_cast<gpio_num_t>(PIN_PREVIOUS));
+    rtc_gpio_pullup_en(static_cast<gpio_num_t>(PIN_NEXT));
+    rtc_gpio_pulldown_dis(static_cast<gpio_num_t>(PIN_NEXT));
+    rtc_gpio_pullup_en(static_cast<gpio_num_t>(PIN_MODE));
+    rtc_gpio_pulldown_dis(static_cast<gpio_num_t>(PIN_MODE));
+    const esp_err_t buttonWake =
+        esp_sleep_enable_ext1_wakeup(BUTTON_WAKE_MASK, ESP_EXT1_WAKEUP_ANY_LOW);
+    LOG.printf("[sleep] entering deep sleep for %u seconds; buttons=%s update_in=%u page_in=%u\n",
+               static_cast<unsigned>(sleepMs / 1000),
+               buttonWake == ESP_OK ? "ready" : "error",
+               static_cast<unsigned>(retainedState.updateRemainingMs / 1000),
+               static_cast<unsigned>(retainedState.pageRemainingMs / 1000));
+    LOG.flush();
+    delay(20);
+    esp_deep_sleep_start();
+    while (true) delay(1000);
+}
+
+void handleTimerWake() {
+    const uint32_t elapsed = retainedState.scheduledSleepMs;
+    retainedState.updateRemainingMs =
+        remainingAfterElapsed(retainedState.updateRemainingMs, elapsed);
+    if (retainedState.pageRemainingMs > 0) {
+        retainedState.pageRemainingMs =
+            remainingAfterElapsed(retainedState.pageRemainingMs, elapsed);
+    }
+    const bool updateDue = retainedState.updateRemainingMs == 0;
+    const bool pageDue = retainedState.pageIntervalMs > 0 && retainedState.pageRemainingMs == 0;
+    LOG.printf("[wake] timer elapsed=%u seconds update=%s page=%s\n",
+               static_cast<unsigned>(elapsed / 1000),
+               updateDue ? "due" : "later",
+               pageDue ? "due" : "later");
+
+    UpdateResult news = UpdateResult::Unchanged;
+    UpdateResult gallery = UpdateResult::Unchanged;
+    if (updateDue) {
+        news = checkForUpdate(newsState);
+        gallery = checkForUpdate(galleryState);
+        powerDownWiFi();
+        retainedState.updateRemainingMs = UPDATE_CHECK_MS;
+    }
     const bool activeUpdated =
         (currentMode == DisplayMode::News && news == UpdateResult::Updated) ||
         (currentMode == DisplayMode::Gallery && gallery == UpdateResult::Updated);
-    if (activeUpdated) showActiveMode();
-    state.intervalStartedAt = millis();
+
+    if (pageDue) {
+        if (activeUpdated) {
+            showActiveMode();
+        } else {
+            navigate(1, "scheduled");
+        }
+        resetPageCountdown();
+    } else if (activeUpdated) {
+        showActiveMode();
+        resetPageCountdown();
+    }
+    ensurePageCountdownMatchesMode();
+    enterDeepSleep();
+}
+
+void beginInteractiveButtonWake(uint64_t wakeMask) {
+    LOG.printf("[wake] button mask=0x%llx; interactive for 3 minutes\n", wakeMask);
+    bool displayed = false;
+    if (wakeMask & (1ULL << PIN_MODE)) {
+        switchMode();
+        displayed = true;
+    } else if (wakeMask & (1ULL << PIN_PREVIOUS)) {
+        navigate(-1, "wake previous");
+        displayed = activeState().pageCount > 0;
+    } else if (wakeMask & (1ULL << PIN_NEXT)) {
+        navigate(1, "wake next");
+        displayed = activeState().pageCount > 0;
+    }
+    if (!displayed) showActiveMode();
+    interactiveSession = true;
+    lastButtonActivityAt = millis();
 }
 
 } // namespace
@@ -562,6 +718,8 @@ void setup() {
     LOG.begin(115200, SERIAL_8N1, PIN_SERIAL_RX, PIN_SERIAL_TX);
     delay(500);
     LOG.println("[boot] reTerminal E1002 AI Daily + Gallery starting");
+    const esp_sleep_wakeup_cause_t wakeCause = esp_sleep_get_wakeup_cause();
+    releaseRtcButtonPins();
     previousButton.begin();
     nextButton.begin();
     modeButton.begin();
@@ -584,18 +742,46 @@ void setup() {
     LOG.printf("[cache] news=%s generation=%s pages=%u; gallery=%s generation=%s pages=%u\n",
                newsCache ? "valid" : "none", newsState.activeGeneration.c_str(), newsState.pageCount,
                galleryCache ? "valid" : "none", galleryState.activeGeneration.c_str(), galleryState.pageCount);
+    const bool retainedValid = retainedState.magic == RETAINED_STATE_MAGIC;
+    if (retainedValid) restoreRetainedNavigation();
+
+    if (wakeCause == ESP_SLEEP_WAKEUP_TIMER && retainedValid) {
+        handleTimerWake();
+    }
+    if (wakeCause == ESP_SLEEP_WAKEUP_EXT1 && retainedValid) {
+        beginInteractiveButtonWake(esp_sleep_get_ext1_wakeup_status());
+        return;
+    }
+
+    LOG.println("[wake] cold boot; checking both manifests");
+    retainedState = RetainedState{};
+    currentMode = DisplayMode::News;
     checkForUpdate(newsState);
     checkForUpdate(galleryState);
     powerDownWiFi();
-    currentMode = DisplayMode::News;
     showActiveMode();
-    lastUpdateCheckAt = millis();
+    retainedState.updateRemainingMs = UPDATE_CHECK_MS;
+    resetPageCountdown();
+    enterDeepSleep();
 }
 
 void loop() {
-    if (previousButton.pressedEvent()) navigate(-1, "previous");
-    if (nextButton.pressedEvent()) navigate(1, "next");
-    if (modeButton.pressedEvent()) switchMode();
+    if (!interactiveSession) {
+        delay(20);
+        return;
+    }
+    if (previousButton.pressedEvent()) {
+        navigate(-1, "previous");
+        lastButtonActivityAt = millis();
+    }
+    if (nextButton.pressedEvent()) {
+        navigate(1, "next");
+        lastButtonActivityAt = millis();
+    }
+    if (modeButton.pressedEvent()) {
+        switchMode();
+        lastButtonActivityAt = millis();
+    }
 
     const uint32_t now = millis();
     ModeState &state = activeState();
@@ -604,9 +790,10 @@ void loop() {
         LOG.printf("[timer] %s automatic next page\n", state.directoryPrefix);
         navigate(1, "automatic");
     }
-    if (!displayRefreshing && intervalElapsed(lastUpdateCheckAt, now, UPDATE_CHECK_MS)) {
-        lastUpdateCheckAt = now;
-        refreshUpdates();
+    if (!displayRefreshing && intervalElapsed(lastButtonActivityAt, now, BUTTON_AWAKE_MS)) {
+        LOG.println("[sleep] three minutes without a button press");
+        resetPageCountdown();
+        enterDeepSleep();
     }
     delay(5);
 }

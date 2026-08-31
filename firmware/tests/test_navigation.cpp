@@ -21,5 +21,11 @@ int main() {
     assert(!automaticAdvanceDue(1000, UINT32_MAX, 0));
     assert(!automaticAdvanceDue(1000, 1999, 1000));
     assert(automaticAdvanceDue(1000, 2000, 1000));
+
+    assert(remainingAfterElapsed(600000, 100000) == 500000);
+    assert(remainingAfterElapsed(600000, 600000) == 0);
+    assert(remainingAfterElapsed(600000, 700000) == 0);
+    assert(earliestWakeDelay(3600000, 600000) == 600000);
+    assert(earliestWakeDelay(3600000, 0) == 3600000);
     return 0;
 }

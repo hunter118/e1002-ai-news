@@ -15,3 +15,12 @@ inline bool intervalElapsed(uint32_t startedAt, uint32_t now, uint32_t interval)
 inline bool automaticAdvanceDue(uint32_t startedAt, uint32_t now, uint32_t interval) {
     return interval > 0 && intervalElapsed(startedAt, now, interval);
 }
+
+inline uint32_t remainingAfterElapsed(uint32_t remaining, uint32_t elapsed) {
+    return elapsed >= remaining ? 0 : remaining - elapsed;
+}
+
+inline uint32_t earliestWakeDelay(uint32_t updateRemaining, uint32_t pageRemaining) {
+    if (pageRemaining == 0) return updateRemaining;
+    return pageRemaining < updateRemaining ? pageRemaining : updateRemaining;
+}
