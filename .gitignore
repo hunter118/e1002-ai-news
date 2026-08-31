@@ -1,0 +1,16 @@
+.env
+.venv/
+.platformio-core/
+backups/
+build/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.coverage
+htmlcov/
+
+firmware/include/config.h
+firmware/.pio/
+firmware/.vscode/
+
+.DS_Store

@@ -1,0 +1,71 @@
+name: Generate and deploy AI Daily
+
+on:
+  schedule:
+    # 23:30 UTC on the previous day = 07:30 Asia/Singapore.
+    - cron: "30 23 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    env:
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      OPENAI_MODEL: ${{ vars.OPENAI_MODEL || 'gpt-5.6-luna' }}
+      CJK_FONT_PATH: /usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install Chinese fonts
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends fonts-noto-cjk
+
+      - name: Install backend dependencies
+        run: python -m pip install -r backend/requirements.txt
+
+      - name: Run backend tests
+        run: python -m pytest backend/tests -q
+
+      - name: Generate validated edition
+        run: python -m backend.generate
+
+      - name: Validate publish artifact
+        run: |
+          test "$(find public/pages -name 'page_*.png' -type f | wc -l)" -eq 6
+          test "$(find public/pages -name 'page_*.epd' -type f | wc -l)" -eq 6
+          python -c 'import json,pathlib; m=json.loads(pathlib.Path("public/manifest.json").read_text()); assert m["page_count"] == 6 and len(m["pages"]) == 6; assert all(p["size"] == 192000 for p in m["pages"])'
+
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@v6
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v5
+        with:
+          path: public
+
+  deploy:
+    needs: generate
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v5

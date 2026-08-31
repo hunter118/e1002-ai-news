@@ -1,0 +1,75 @@
+{
+  "schema_version": 1,
+  "generated_at": "2026-08-31T16:23:38.853510+08:00",
+  "source_issue": "https://daily.juya.uk/issues/2026-08-31/",
+  "source_issues": [
+    "https://daily.juya.uk/issues/2026-08-31/",
+    "https://daily.juya.uk/issues/2026-08-30/",
+    "https://daily.juya.uk/issues/2026-08-29/",
+    "https://daily.juya.uk/issues/2026-08-28/"
+  ],
+  "generation_id": "2026-08-31-09fd952b7a4d",
+  "page_count": 6,
+  "pages": [
+    {
+      "index": 1,
+      "url": "pages/page_1.epd",
+      "preview_url": "pages/page_1.png",
+      "sha256": "873727ae9d1f5265e13afa3f6b4e9685ce329cc04b75d3ad2516eda4c8239145",
+      "size": 192000,
+      "width": 800,
+      "height": 480,
+      "format": "e1002-4bpp"
+    },
+    {
+      "index": 2,
+      "url": "pages/page_2.epd",
+      "preview_url": "pages/page_2.png",
+      "sha256": "8b767051f5a01cea26a0b361b5d09a9e0a0f674da5cd971d0c1ef41d8660587f",
+      "size": 192000,
+      "width": 800,
+      "height": 480,
+      "format": "e1002-4bpp"
+    },
+    {
+      "index": 3,
+      "url": "pages/page_3.epd",
+      "preview_url": "pages/page_3.png",
+      "sha256": "754ec339935ea2682e5e4657cffa589f1b2c2a373ac8d2c8463b4599e7df5ec9",
+      "size": 192000,
+      "width": 800,
+      "height": 480,
+      "format": "e1002-4bpp"
+    },
+    {
+      "index": 4,
+      "url": "pages/page_4.epd",
+      "preview_url": "pages/page_4.png",
+      "sha256": "8d1cbf11bf2c36ea3e5980dc75100d4c7c58bfdb575812d0d038673607971e0e",
+      "size": 192000,
+      "width": 800,
+      "height": 480,
+      "format": "e1002-4bpp"
+    },
+    {
+      "index": 5,
+      "url": "pages/page_5.epd",
+      "preview_url": "pages/page_5.png",
+      "sha256": "ee1cd477ea160a66730746d3023e8900a4cb76ac0ca2238f7bf7b48f02b56f61",
+      "size": 192000,
+      "width": 800,
+      "height": 480,
+      "format": "e1002-4bpp"
+    },
+    {
+      "index": 6,
+      "url": "pages/page_6.epd",
+      "preview_url": "pages/page_6.png",
+      "sha256": "65d9119808db9ce79982317c13a6e5e780f21f500a3ab5415cbb843186ed4ed1",
+      "size": 192000,
+      "width": 800,
+      "height": 480,
+      "format": "e1002-4bpp"
+    }
+  ]
+}
