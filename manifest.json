@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "kind": "gallery",
+  "generation_id": "github-9b0b85e1d99ad14b",
+  "page_count": 1,
+  "interval_ms": 0,
+  "pages": [
+    {
+      "index": 1,
+      "url": "pages/page_1.epd",
+      "sha256": "1eeac1a1fc2813332bb7ddaaeecd9cd69b88e9ddbe0e43bc4830d1a3913a4c61",
+      "size": 192000,
+      "width": 800,
+      "height": 480,
+      "format": "e1002-4bpp",
+      "source_name": "01_Tong.png",
+      "preview_url": "previews/page_1.png"
+    }
+  ]
+}
