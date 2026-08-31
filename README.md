@@ -6,7 +6,7 @@ An end-to-end daily AI news and photo display for the Seeed Studio reTerminal E1
 
 ```mermaid
 flowchart LR
-    A[GitHub Actions<br>07:30 Singapore] --> B[Juya RSS]
+    A[GitHub Actions<br>08:30-14:30 hourly preflight] --> B[Juya RSS]
     B --> C[Parse real stories]
     C --> D[OpenAI<br>dedupe / classify / rank / summarize]
     D --> E[18 validated stories]
@@ -139,7 +139,7 @@ Before `public/` is replaced, the generator enforces:
 
 ## GitHub Actions and Pages
 
-The workflow runs at `30 23 * * *`: 23:30 UTC on the previous calendar day, which is 07:30 in Singapore. It also supports `workflow_dispatch`.
+The workflow runs hourly from 08:30 through 14:30 Singapore time (`30 0-6 * * *` UTC). Each scheduled run first reads Juya's RSS and the currently deployed manifest using only the Python standard library. Before today's issue exists it exits without installing dependencies or calling OpenAI; after today's source URL is already deployed, later runs also exit. Thus only the first run that observes a new same-day issue performs generation. This accommodates variable RSS publication times without repeatedly spending API tokens. `workflow_dispatch` remains an explicit forced generation path.
 
 Repository setup:
 
@@ -191,6 +191,8 @@ E1001/E1002 USB is connected through a CH340 bridge to UART0. The application th
 At boot the firmware mounts LittleFS, loads the last complete news and gallery caches, connects Wi-Fi, and checks both manifests. A brand-new or unreadable cache partition is formatted only after a logged mount failure. Each mode has independent A/B slots. Every page must have the expected length and SHA-256; only after a whole generation validates does one NVS value atomically switch that mode's active slot. A partial download is discarded while the old complete slot remains untouched.
 
 The synchronous e-paper refresh is guarded by `displayRefreshing`, so button and timer events cannot overlap a refresh. News rotates every ten minutes; the album interval comes from the management page and may be set to `0` to disable automatic paging permanently. Active timers restart after the slow physical refresh finishes. LEFT/MIDDLE wrap through the active mode's pages, while RIGHT switches between news and gallery.
+
+No always-on local service is required. GitHub Actions performs news generation and the validated gallery mirror, GitHub Pages serves news assets, Sites stores/manages the album, and the powered E1002 polls both public delivery endpoints over Wi-Fi. The Mac, local virtual environment, `.env`, and development servers may all be shut down after deployment. Autonomous operation still depends on device power/Wi-Fi, an enabled GitHub Actions/Pages setup, a valid `OPENAI_API_KEY` repository secret, and availability of the external cloud services.
 
 No SD card is required. One cached device page is exactly 192,000 bytes. Ten gallery pages need 1.92 MB, or 3.84 MB while old and new A/B generations coexist. News A/B adds about 2.30 MB, for roughly 6.14 MB total. The device reserves a 28 MB LittleFS partition, so the current 20-photo firmware limit remains comfortably within internal flash capacity.
 
