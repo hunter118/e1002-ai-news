@@ -37,7 +37,7 @@ jobs:
           cache-dependency-path: source/backend/requirements.txt
 
       - name: Install image converter
-        run: python -m pip install Pillow==12.1.1
+        run: python -m pip install Pillow==12.1.1 pydantic==2.12.5
 
       - name: Build and validate gallery
         run: |
