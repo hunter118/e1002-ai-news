@@ -60,6 +60,8 @@ def test_existing_epd_can_be_used_as_a_migration_source(tmp_path: Path) -> None:
 
     assert (output / "pages/page_1.epd").read_bytes() == raw
     assert manifest["pages"][0]["source_name"] == "01_existing.epd"
+    assert "preview_url" not in manifest["pages"][0]
+    assert not (output / "previews/page_1.png").exists()
 
 
 def test_invalid_interval_and_photo_limit_are_rejected(tmp_path: Path) -> None:

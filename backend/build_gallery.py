@@ -113,22 +113,22 @@ def build_gallery(photos_dir: Path, config_path: Path, output_dir: Path) -> dict
             image = render_photo(source)
             raw = pack_e1002_4bpp(image)
             raw_path = pages_dir / f"page_{index}.epd"
-            preview_path = previews_dir / f"page_{index}.png"
             raw_path.write_bytes(raw)
-            image.save(preview_path, format="PNG", optimize=True)
-            manifest_pages.append(
-                {
-                    "index": index,
-                    "url": f"pages/page_{index}.epd",
-                    "sha256": hashlib.sha256(raw).hexdigest(),
-                    "size": RAW_PAGE_SIZE,
-                    "width": WIDTH,
-                    "height": HEIGHT,
-                    "format": "e1002-4bpp",
-                    "source_name": source.name,
-                    "preview_url": f"previews/page_{index}.png",
-                }
-            )
+            page: dict[str, object] = {
+                "index": index,
+                "url": f"pages/page_{index}.epd",
+                "sha256": hashlib.sha256(raw).hexdigest(),
+                "size": RAW_PAGE_SIZE,
+                "width": WIDTH,
+                "height": HEIGHT,
+                "format": "e1002-4bpp",
+                "source_name": source.name,
+            }
+            if source.suffix.casefold() != ".epd":
+                preview_path = previews_dir / f"page_{index}.png"
+                image.save(preview_path, format="PNG", optimize=True)
+                page["preview_url"] = f"previews/page_{index}.png"
+            manifest_pages.append(page)
 
         manifest: dict[str, object] = {
             "schema_version": 1,
