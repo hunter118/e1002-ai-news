@@ -27,12 +27,14 @@ constexpr uint32_t PAGE_INTERVAL_MS = 10UL * 60UL * 1000UL;
 constexpr uint32_t WIFI_TIMEOUT_MS = 15000;
 constexpr uint32_t HTTP_TIMEOUT_MS = 20000;
 constexpr uint32_t DOWNLOAD_STALL_TIMEOUT_MS = 15000;
+constexpr size_t DOWNLOAD_BUFFER_BYTES = 4096;
 constexpr uint32_t DEBOUNCE_MS = 50;
 constexpr uint8_t PIN_LEFT = 5;   // KEY2, active LOW (official schematic/example)
 constexpr uint8_t PIN_MIDDLE = 4; // KEY1, intentionally unused
 constexpr uint8_t PIN_RIGHT = 3;  // KEY0, active LOW
 constexpr uint8_t PIN_SERIAL_RX = 44;
 constexpr uint8_t PIN_SERIAL_TX = 43;
+constexpr const char *LITTLEFS_PARTITION_LABEL = "littlefs";
 
 #define LOG Serial1
 
@@ -236,6 +238,7 @@ String hexDigest(const uint8_t digest[32]) {
 }
 
 bool downloadPage(const RemotePage &remote, const String &destination) {
+    LOG.printf("[download] starting %s -> %s\n", remote.url.c_str(), destination.c_str());
     const String temporary = destination + ".tmp";
     LittleFS.remove(temporary);
     File output = LittleFS.open(temporary, "w");
@@ -262,18 +265,29 @@ bool downloadPage(const RemotePage &remote, const String &destination) {
         return false;
     }
 
+    // loopTask has an 8 KiB stack. Keeping this 4 KiB transfer buffer on that
+    // stack alongside TLS/HTTP objects can overflow it before the first read.
+    uint8_t *buffer = static_cast<uint8_t *>(ps_malloc(DOWNLOAD_BUFFER_BYTES));
+    if (!buffer) buffer = static_cast<uint8_t *>(malloc(DOWNLOAD_BUFFER_BYTES));
+    if (!buffer) {
+        LOG.println("[download] cannot allocate transfer buffer");
+        http.end();
+        output.close();
+        LittleFS.remove(temporary);
+        return false;
+    }
+
     mbedtls_sha256_context shaContext;
     mbedtls_sha256_init(&shaContext);
     mbedtls_sha256_starts_ret(&shaContext, 0);
     WiFiClient *stream = http.getStreamPtr();
-    uint8_t buffer[4096];
     size_t total = 0;
     uint32_t lastProgress = millis();
     bool ok = true;
     while (total < remote.size) {
         const int available = stream->available();
         if (available > 0) {
-            const size_t wanted = min(static_cast<size_t>(available), min(sizeof(buffer), remote.size - total));
+            const size_t wanted = min(static_cast<size_t>(available), min(DOWNLOAD_BUFFER_BYTES, remote.size - total));
             const int count = stream->readBytes(buffer, wanted);
             if (count <= 0 || output.write(buffer, count) != static_cast<size_t>(count)) {
                 ok = false;
@@ -292,6 +306,7 @@ bool downloadPage(const RemotePage &remote, const String &destination) {
     uint8_t digest[32];
     mbedtls_sha256_finish_ret(&shaContext, digest);
     mbedtls_sha256_free(&shaContext);
+    free(buffer);
     http.end();
     output.flush();
     output.close();
@@ -428,17 +443,24 @@ void setup() {
     pinMode(PIN_MIDDLE, INPUT); // Deliberately no feature.
 
     display.begin();
-    filesystemReady = LittleFS.begin(false);
+    // Arduino's LittleFS wrapper defaults to a partition named "spiffs".
+    // This project uses an explicit "littlefs" label in partitions.csv, so
+    // always pass it rather than relying on the wrapper default.
+    filesystemReady = LittleFS.begin(false, "/littlefs", 10, LITTLEFS_PARTITION_LABEL);
     if (!filesystemReady) {
         // A brand-new custom partition is unformatted. The format-on-failure path is
         // logged and only runs when no readable cache exists.
         LOG.println("[fs] LittleFS mount failed; formatting the new/unreadable cache partition");
-        filesystemReady = LittleFS.begin(true);
+        filesystemReady = LittleFS.begin(true, "/littlefs", 10, LITTLEFS_PARTITION_LABEL);
         if (!filesystemReady) {
+            LOG.println("[fs] LittleFS format/mount failed");
             showDiagnostic("CACHE ERROR", "LittleFS mount failed");
             return;
         }
     }
+    LOG.printf("[fs] LittleFS ready total=%u used=%u\n",
+               static_cast<unsigned>(LittleFS.totalBytes()),
+               static_cast<unsigned>(LittleFS.usedBytes()));
     LittleFS.mkdir("/slot_a");
     LittleFS.mkdir("/slot_b");
     preferences.begin("ai-news", false);
