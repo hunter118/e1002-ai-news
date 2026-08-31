@@ -1,8 +1,16 @@
-name: Sync E1002 gallery
+name: Build E1002 gallery
 
 on:
-  schedule:
-    - cron: "*/5 * * * *"
+  push:
+    branches:
+      - main
+    paths:
+      - "gallery/photos/**"
+      - "gallery/config.json"
+      - "backend/build_gallery.py"
+      - "backend/render.py"
+      - "backend/requirements.txt"
+      - ".github/workflows/gallery-sync.yml"
   workflow_dispatch:
 
 permissions:
@@ -13,25 +21,37 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  sync:
+  build:
     runs-on: ubuntu-latest
     steps:
-      - name: Check out validator
+      - name: Check out gallery source
         uses: actions/checkout@v7
         with:
           path: source
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: source/backend/requirements.txt
+
+      - name: Install image converter
+        run: python -m pip install Pillow==12.1.1
+
+      - name: Build and validate gallery
+        run: |
+          cd source
+          python -m backend.build_gallery \
+            --photos gallery/photos \
+            --config gallery/config.json \
+            --output "$RUNNER_TEMP/gallery"
 
       - name: Check out gallery delivery branch
         uses: actions/checkout@v7
         with:
           ref: gallery
           path: publish
-
-      - name: Download and validate gallery
-        run: |
-          python source/backend/sync_gallery.py \
-            --source https://e1002-gallery.jlombelkf0x.chatgpt.site/api/gallery/manifest \
-            --output "$RUNNER_TEMP/gallery"
 
       - name: Publish a history-free snapshot only when changed
         run: |

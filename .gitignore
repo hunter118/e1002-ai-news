@@ -13,7 +13,7 @@ firmware/include/config.h
 firmware/.pio/
 firmware/.vscode/
 
-# Separate Sites source repository (deployed independently).
+# Legacy Sites source repository; retained locally but no longer deployed or used.
 gallery-admin/
 
 .DS_Store

@@ -1,6 +1,6 @@
 # reTerminal E1002 AI Daily News Display
 
-An end-to-end daily AI news and photo display for the Seeed Studio reTerminal E1002. A GitHub Actions backend turns the newest [Juya AI Daily RSS](https://daily.juya.uk/rss.xml) content into exactly 18 source-traceable Chinese stories and deploys six e-paper pages to GitHub Pages. A separate Sites app manages an up-to-20-photo album, ordering, and playback interval. The ESP32-S3 remains a small display client: it downloads, validates, caches, and rotates both modes.
+An end-to-end daily AI news and photo display for the Seeed Studio reTerminal E1002. A GitHub Actions backend turns the newest [Juya AI Daily RSS](https://daily.juya.uk/rss.xml) content into exactly 18 source-traceable Chinese stories and deploys six e-paper pages to GitHub Pages. A repository folder manages an up-to-20-photo album, ordering, and playback interval through GitHub's normal web interface. The ESP32-S3 remains a small display client: it downloads, validates, caches, and rotates both modes.
 
 ## Architecture
 
@@ -13,7 +13,7 @@ flowchart LR
     E --> F[6 x 800x480 PNG previews<br>+ native 4bpp E1002 pages]
     F --> G[GitHub Pages<br>manifest.json + page files]
     G --> H[E1002 news A/B cache]
-    J[Sites album manager<br>D1 + R2] --> K[5-minute validated sync]
+    J[GitHub web<br>gallery/photos + config] --> K[Gallery build Action]
     K --> P[GitHub gallery branch<br>manifest + page files]
     P --> L[E1002 gallery A/B cache]
     H --> I[Spectra 6 display]
@@ -34,7 +34,7 @@ The backend is the only component that sees `OPENAI_API_KEY`. The device only re
 │   ├── include/config.h      local credentials; gitignored
 │   └── include/config.example.h
 ├── public/                   deployable news manifest and page assets
-├── gallery-admin/            independent Sites source repository; parent-gitignored
+├── gallery/                  GitHub-managed source photos and playback config
 ├── backups/                  local factory flash backup; gitignored
 └── .github/workflows/daily.yml
 ```
@@ -152,13 +152,11 @@ Repository setup:
 
 The workflow tests first, generates into `public/`, checks asset counts and sizes, and only then uploads a Pages artifact. If RSS, OpenAI, validation, or rendering fails, deployment does not run and the previously deployed edition remains available.
 
-## Gallery management site
+## Gallery management through GitHub
 
-The independently deployed Sites app is [E1002 Gallery Console](https://e1002-gallery.jlombelkf0x.chatgpt.site/). Photo management is under `/admin`, requires Sign in with ChatGPT, and is restricted to the owner who claimed the initial private deployment. Public visitors can read the gallery output but cannot mutate it.
+The repository's [`gallery/photos`](gallery/photos) folder is the album manager. In GitHub's web interface, use **Add file → Upload files** to add JPG, PNG, or WebP images and commit the change. Because this repository is public, those uploaded source images are public too. Delete a file through its GitHub file page. Filenames are naturally sorted, so numeric prefixes such as `01_`, `02_`, and `03_` set the playback order. Up to 20 photos are accepted. A pre-existing `.epd` may also be retained as a migration source without publishing a new browser-previewable copy.
 
-The browser center-crops uploads to 800×480, converts them with Floyd–Steinberg six-color dithering, and uploads a PNG preview plus an exact 192,000-byte device page. D1 stores order, interval, hashes, and ownership; R2 stores the two image assets. Add/delete/reorder/interval changes all advance the gallery generation ID.
-
-Because the `chatgpt.site` edge can require a browser challenge on this network, the ESP32 does not fetch it directly. `.github/workflows/gallery-sync.yml` polls the public read-only manifest every five minutes, validates page count, size, SHA-256, and every 4-bit color code, then mirrors only valid `.epd` output to the orphan `gallery` branch. Each update force-replaces that branch with one current root snapshot instead of building browsable history. The device reads `https://raw.githubusercontent.com/hunter118/e1002-ai-news/gallery/manifest.json`. GitHub's repository-scoped Actions token performs the mirror; no personal GitHub token or API key is stored in the site or firmware.
+[`gallery/config.json`](gallery/config.json) stores `interval_seconds`; use `0` for no automatic paging or a value from 10 through 86400 seconds. On each relevant commit, `.github/workflows/gallery-sync.yml` center-crops photos to 800×480, applies Floyd–Steinberg Spectra 6 dithering, validates exact 192,000-byte device pages, and force-replaces the history-free `gallery` delivery branch. The device continues to read `https://raw.githubusercontent.com/hunter118/e1002-ai-news/gallery/manifest.json`. No Sites app, Cloudflare path, personal GitHub token, or local service is involved.
 
 ## Firmware configuration, build, and flash
 
@@ -188,7 +186,7 @@ E1001/E1002 USB is connected through a CH340 bridge to UART0. The application th
 
 ## Device behavior
 
-At boot the firmware mounts LittleFS, loads the last complete news and gallery caches, connects Wi-Fi, checks both manifests, renders the active page, and enters deep sleep. RTC memory retains the active mode, both page indices, and the remaining page/update countdowns. The next timer wake is whichever comes first: the active mode's automatic page interval or the 60-minute update interval. News therefore wakes every ten minutes to turn one page and every sixth timer wake also checks both manifests. The album honors the management site's interval, including `0` for no automatic paging. Every timer path returns to deep sleep after its task, including unchanged and failed update checks.
+At every cold boot or reset the firmware mounts LittleFS, loads the last complete news and gallery caches, turns on Wi-Fi, checks both manifests, renders the active page, and enters deep sleep. RTC memory retains the active mode, both page indices, and the remaining page/update countdowns. The next timer wake is whichever comes first: the active mode's automatic page interval or the 60-minute update interval. News therefore wakes every ten minutes to turn one page and every sixth timer wake also checks both manifests. The album honors `gallery/config.json`, including `0` for no automatic paging. Every timer path returns to deep sleep after its task, including unchanged and failed update checks.
 
 All three front buttons are deep-sleep wake sources. A wake press performs its normal action (LEFT previous, MIDDLE next, RIGHT mode), then keeps the device interactive for three minutes after the most recent button press. Wi-Fi stays off during this interaction. At the end of the inactivity window the current mode/page state is retained and the device sleeps again. A button wake can slightly postpone the relative page/update countdown because strict wall-clock alignment is intentionally not required.
 
@@ -196,7 +194,7 @@ News and gallery share one Wi-Fi connection for each update batch; immediately a
 
 The synchronous e-paper refresh is guarded by `displayRefreshing`, so button and timer events cannot overlap a refresh. LEFT/MIDDLE wrap through the active mode's pages, while RIGHT switches between news and gallery.
 
-No always-on local service is required. GitHub Actions performs news generation and the validated gallery mirror, GitHub Pages serves news assets, Sites stores/manages the album, and the powered E1002 polls both public delivery endpoints over Wi-Fi. The Mac, local virtual environment, `.env`, and development servers may all be shut down after deployment. Autonomous operation still depends on device power/Wi-Fi, an enabled GitHub Actions/Pages setup, a valid `OPENAI_API_KEY` repository secret, and availability of the external cloud services.
+No always-on local service is required. GitHub Actions performs news generation and gallery conversion, GitHub Pages serves news assets, the `gallery` branch serves album assets, and the powered E1002 polls both public delivery endpoints over Wi-Fi. The Mac, local virtual environment, `.env`, and development servers may all be shut down after deployment. Autonomous operation still depends on device power/Wi-Fi, an enabled GitHub Actions/Pages setup, a valid `OPENAI_API_KEY` repository secret, and availability of the external cloud services.
 
 No SD card is required. One cached device page is exactly 192,000 bytes. Ten gallery pages need 1.92 MB, or 3.84 MB while old and new A/B generations coexist. News A/B adds about 2.30 MB, for roughly 6.14 MB total. The device reserves a 28 MB LittleFS partition, so the current 20-photo firmware limit remains comfortably within internal flash capacity.
 
@@ -209,5 +207,6 @@ No SD card is required. One cached device page is exactly 192,000 bytes. Ten gal
 - **Wi-Fi fails:** the ESP32-S3 needs 2.4 GHz Wi-Fi. Existing cached pages continue rotating.
 - **No valid cache on first boot:** confirm both manifests are public and `NEWS_BASE_URL` / `GALLERY_BASE_URL` end with `/`.
 - **New edition is rejected:** compare the serial SHA/size error with `public/manifest.json`; all `.epd` files must be 192,000 bytes.
-- **GitHub Action does not deploy:** confirm Pages is set to GitHub Actions and the repository has the `OPENAI_API_KEY` secret.
+- **GitHub Action does not deploy news:** confirm Pages is set to GitHub Actions and the repository has the `OPENAI_API_KEY` secret.
+- **A committed photo does not appear:** open **Actions → Build E1002 gallery** and confirm the latest run succeeded; then wait for the device's hourly check or restart it.
 - **Slow screen updates:** a full Spectra 6 refresh is intentionally slow. Do not repeatedly reset or press navigation during refresh.
