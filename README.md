@@ -188,7 +188,7 @@ E1001/E1002 USB is connected through a CH340 bridge to UART0. The application th
 
 ## Device behavior
 
-At boot the firmware mounts LittleFS, loads the last complete news and gallery caches, connects Wi-Fi, and checks both manifests. A brand-new or unreadable cache partition is formatted only after a logged mount failure. Each mode has independent A/B slots. Every page must have the expected length and SHA-256; only after a whole generation validates does one NVS value atomically switch that mode's active slot. A partial download is discarded while the old complete slot remains untouched.
+At boot the firmware mounts LittleFS, loads the last complete news and gallery caches, connects Wi-Fi, and checks both manifests. News and gallery share one connection for each check batch; immediately afterward the station disconnects and the Wi-Fi radio is disabled until the next ten-minute check. A brand-new or unreadable cache partition is formatted only after a logged mount failure. Each mode has independent A/B slots. Every page must have the expected length and SHA-256; only after a whole generation validates does one NVS value atomically switch that mode's active slot. A partial download is discarded while the old complete slot remains untouched.
 
 The synchronous e-paper refresh is guarded by `displayRefreshing`, so button and timer events cannot overlap a refresh. News rotates every ten minutes; the album interval comes from the management page and may be set to `0` to disable automatic paging permanently. Active timers restart after the slow physical refresh finishes. LEFT/MIDDLE wrap through the active mode's pages, while RIGHT switches between news and gallery.
 

@@ -243,6 +243,16 @@ bool connectWiFi() {
     return true;
 }
 
+void powerDownWiFi() {
+    if (WiFi.getMode() == WIFI_MODE_NULL) return;
+    LOG.println("[wifi] checks complete; radio off");
+    // Preserve the configured SSID/password in RAM/NVS while disabling the
+    // station and RF hardware until the next manifest check.
+    if (!WiFi.disconnect(true, false)) {
+        LOG.println("[wifi] radio-off request failed");
+    }
+}
+
 bool parseManifest(const String &payload, ModeState &state, RemoteManifest &manifest) {
     JsonDocument document;
     const DeserializationError error = deserializeJson(document, payload);
@@ -537,6 +547,7 @@ void switchMode() {
 void refreshUpdates() {
     const UpdateResult news = checkForUpdate(newsState);
     const UpdateResult gallery = checkForUpdate(galleryState);
+    powerDownWiFi();
     ModeState &state = activeState();
     const bool activeUpdated =
         (currentMode == DisplayMode::News && news == UpdateResult::Updated) ||
@@ -575,6 +586,7 @@ void setup() {
                galleryCache ? "valid" : "none", galleryState.activeGeneration.c_str(), galleryState.pageCount);
     checkForUpdate(newsState);
     checkForUpdate(galleryState);
+    powerDownWiFi();
     currentMode = DisplayMode::News;
     showActiveMode();
     lastUpdateCheckAt = millis();
