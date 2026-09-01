@@ -118,29 +118,16 @@ def deduplicate_sources(stories: Iterable[SourceStory]) -> list[SourceStory]:
 def collect_candidate_stories(
     issues: list[FeedIssue],
     primary_index: int,
-    minimum: int = 18,
-    target_pool: int = 30,
-    max_issues: int = 7,
 ) -> tuple[list[SourceStory], list[FeedIssue]]:
-    candidates: list[SourceStory] = []
-    used_issues: list[FeedIssue] = []
-    ordered = issues[primary_index:] + issues[:primary_index]
-    for issue in ordered[:max_issues]:
-        parsed = parse_issue(issue)
-        if not parsed:
-            continue
-        candidates = deduplicate_sources([*candidates, *parsed])
-        used_issues.append(issue)
-        if len(candidates) >= target_pool:
-            break
-    if len(candidates) < minimum:
-        raise ValueError(f"Only {len(candidates)} unique real stories available; need at least {minimum}")
-    if len(used_issues) > 1:
-        LOGGER.warning(
-            "Primary issue had fewer than the target pool; supplemented only from %d recent RSS issues: %s",
-            len(used_issues),
-            ", ".join(str(issue.issue_date) for issue in used_issues),
-        )
-    LOGGER.info("Number of raw candidate stories after deterministic deduplication: %d", len(candidates))
-    return candidates, used_issues
-
+    primary = issues[primary_index]
+    candidates = deduplicate_sources(parse_issue(primary))
+    if not candidates:
+        raise ValueError(f"Juya issue {primary.issue_date} contained no usable stories")
+    if any(story.issue_date != primary.issue_date or story.issue_url != primary.url for story in candidates):
+        raise ValueError("Candidate set contains a story outside the primary Juya issue")
+    LOGGER.info(
+        "Today's candidate stories after deterministic deduplication: %d (strictly %s)",
+        len(candidates),
+        primary.issue_date,
+    )
+    return candidates, [primary]

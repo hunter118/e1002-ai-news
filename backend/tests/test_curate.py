@@ -24,14 +24,14 @@ def _curated(source, index: int) -> CuratedStory:
 
 def test_valid_18_stories(source_stories) -> None:
     edition = CuratedEdition(stories=[_curated(source, index) for index, source in enumerate(source_stories[:18], 1)])
-    result = validate_edition(edition, source_stories)
+    result = validate_edition(edition, source_stories, 18)
     assert len(result.stories) == 18
     assert len({story.id for story in result.stories}) == 18
 
 
 def test_wrong_story_count_is_deterministically_repaired(source_stories) -> None:
     edition = CuratedEdition(stories=[_curated(source, index) for index, source in enumerate(source_stories[:9], 1)])
-    result = validate_edition(edition, source_stories)
+    result = validate_edition(edition, source_stories, 18)
     assert len(result.stories) == 18
     assert result.stories[-1].url in {story.url for story in source_stories}
 
@@ -39,7 +39,7 @@ def test_wrong_story_count_is_deterministically_repaired(source_stories) -> None
 def test_duplicate_source_ids_are_repaired(source_stories) -> None:
     first = _curated(source_stories[0], 1)
     duplicate = first.model_copy(update={"id": "draft-duplicate", "title": "重复事件"})
-    result = validate_edition(CuratedEdition(stories=[first, duplicate]), source_stories)
+    result = validate_edition(CuratedEdition(stories=[first, duplicate]), source_stories, 18)
     assert len(result.stories) == 18
     assert len({source_id for story in result.stories for source_id in story.source_story_ids}) >= 18
 
@@ -97,3 +97,9 @@ def test_deterministic_edition_is_exact(source_stories) -> None:
     edition = deterministic_edition(source_stories)
     assert len(edition.stories) == 18
 
+
+def test_available_count_below_18_is_preserved(source_stories) -> None:
+    candidates = source_stories[:16]
+    edition = deterministic_edition(candidates)
+    assert len(edition.stories) == 16
+    assert {story.url for story in edition.stories} == {story.url for story in candidates}

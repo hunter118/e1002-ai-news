@@ -4,7 +4,7 @@ from datetime import date
 
 from backend.fetch_juya import choose_primary_issue, parse_rss
 from backend.models import FeedIssue
-from backend.parse_issue import deduplicate_sources, parse_issue
+from backend.parse_issue import collect_candidate_stories, deduplicate_sources, parse_issue
 
 
 def _rss(items: str) -> bytes:
@@ -81,3 +81,24 @@ def test_story_missing_optional_link_is_ignored_without_crashing() -> None:
     )
     assert parse_issue(issue) == []
 
+
+def test_candidate_collection_never_supplements_from_an_older_issue() -> None:
+    current = FeedIssue(
+        title="2026-09-01",
+        issue_date=date(2026, 9, 1),
+        url="https://daily.juya.uk/issues/2026-09-01/",
+        content_html=STORY_HTML,
+    )
+    older = FeedIssue(
+        title="2026-08-31",
+        issue_date=date(2026, 8, 31),
+        url="https://daily.juya.uk/issues/2026-08-31/",
+        content_html=STORY_HTML.replace("story", "older-story"),
+    )
+
+    candidates, used_issues = collect_candidate_stories([current, older], 0)
+
+    assert used_issues == [current]
+    assert candidates
+    assert all(story.issue_date == current.issue_date for story in candidates)
+    assert all(story.issue_url == current.url for story in candidates)

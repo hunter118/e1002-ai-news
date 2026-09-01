@@ -14,6 +14,14 @@ int main() {
     assert(wrapPage(2, 1, 3) == 0);
     assert(wrapPage(0, 1, 0) == 0);
 
+    // News accepts a dynamic one-to-six-page edition; the gallery allows zero to twenty.
+    assert(pageCountAllowed(1, 0, 6, false));
+    assert(pageCountAllowed(6, 0, 6, false));
+    assert(!pageCountAllowed(0, 0, 6, false));
+    assert(!pageCountAllowed(7, 0, 6, false));
+    assert(pageCountAllowed(0, 0, 20, true));
+    assert(pageCountAllowed(20, 0, 20, true));
+
     assert(!intervalElapsed(1000, 1000 + 599999, 600000));
     assert(intervalElapsed(1000, 1000 + 600000, 600000));
     // Unsigned subtraction keeps the timer correct across millis() rollover.

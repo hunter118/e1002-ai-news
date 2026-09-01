@@ -67,9 +67,7 @@ jobs:
       - name: Validate publish artifact
         if: steps.freshness.outputs.should_generate == 'true'
         run: |
-          test "$(find public/pages -name 'page_*.png' -type f | wc -l)" -eq 6
-          test "$(find public/pages -name 'page_*.epd' -type f | wc -l)" -eq 6
-          python -c 'import json,pathlib; m=json.loads(pathlib.Path("public/manifest.json").read_text()); assert m["page_count"] == 6 and len(m["pages"]) == 6; assert all(p["size"] == 192000 for p in m["pages"])'
+          python -c 'import json,pathlib; root=pathlib.Path("public"); m=json.loads((root/"manifest.json").read_text()); n=m["page_count"]; assert 1 <= n <= 6 and len(m["pages"]) == n; assert len(list((root/"pages").glob("page_*.png"))) == n; assert len(list((root/"pages").glob("page_*.epd"))) == n; assert all(p["size"] == 192000 for p in m["pages"])'
 
       - name: Configure GitHub Pages
         if: steps.freshness.outputs.should_generate == 'true'

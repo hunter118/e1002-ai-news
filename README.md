@@ -1,6 +1,6 @@
 # reTerminal E1002 AI Daily News Display
 
-An end-to-end daily AI news and photo display for the Seeed Studio reTerminal E1002. A GitHub Actions backend turns the newest [Juya AI Daily RSS](https://daily.juya.uk/rss.xml) content into exactly 18 source-traceable Chinese stories and deploys six e-paper pages to GitHub Pages. A repository folder manages an up-to-20-photo album, ordering, and playback interval through GitHub's normal web interface. The ESP32-S3 remains a small display client: it downloads, validates, caches, and rotates both modes.
+An end-to-end daily AI news and photo display for the Seeed Studio reTerminal E1002. A GitHub Actions backend turns only the current day's [Juya AI Daily RSS](https://daily.juya.uk/rss.xml) issue into up to 18 source-traceable Chinese stories and deploys one to six e-paper pages to GitHub Pages. A repository folder manages an up-to-20-photo album, ordering, and playback interval through GitHub's normal web interface. The ESP32-S3 remains a small display client: it downloads, validates, caches, and rotates both modes.
 
 ## Architecture
 
@@ -9,8 +9,8 @@ flowchart LR
     A[GitHub Actions<br>08:30-14:30 hourly preflight] --> B[Juya RSS]
     B --> C[Parse real stories]
     C --> D[OpenAI<br>dedupe / classify / rank / summarize]
-    D --> E[18 validated stories]
-    E --> F[6 x 800x480 PNG previews<br>+ native 4bpp E1002 pages]
+    D --> E[1-18 validated stories<br>today only]
+    E --> F[1-6 x 800x480 PNG previews<br>+ native 4bpp E1002 pages]
     F --> G[GitHub Pages<br>manifest.json + page files]
     G --> H[E1002 news A/B cache]
     J[GitHub web<br>gallery/photos + config] --> K[Gallery build Action]
@@ -119,17 +119,17 @@ For parser/render development without an API call:
 
 That mode is intentionally marked development-only. Scheduled publication always uses OpenAI and fails rather than deploying malformed output.
 
-The generator writes inspectable intermediates to gitignored `build/raw_stories.json` and `build/curated.json`. If today's issue has fewer than 18 unique entries, it supplements candidates only from the recent issue bodies already embedded in Juya's RSS, logs the issue dates used, and never invents filler news.
+The generator writes inspectable intermediates to gitignored `build/raw_stories.json` and `build/curated.json`. It accepts candidates only from today's selected Juya issue and never supplements from older issues. It publishes all usable stories when there are 18 or fewer, or selects the top 18 when there are more. Each page has up to three stories; unused slots on the final page stay blank.
 
 ## Output guarantees
 
 Before `public/` is replaced, the generator enforces:
 
-- exactly 18 stories and six pages;
-- exactly three stories per page;
+- between 1 and 18 stories from today's Juya issue only;
+- one to six pages, with up to three stories per page;
 - unique stable IDs and valid source story IDs;
 - each published URL is copied from a source record;
-- title, summary, category, and score constraints;
+- title, summary, and category constraints;
 - 800×480 dimensions and only the six native colors;
 - exactly 192,000 bytes per device page;
 - a SHA-256 for every device page;
@@ -148,7 +148,7 @@ Repository setup:
 3. Optionally add repository variable `OPENAI_MODEL`; otherwise `gpt-5.6-luna` is used.
 4. In **Settings → Pages → Build and deployment**, choose **GitHub Actions** as the source.
 5. Run **Actions → Generate and deploy AI Daily → Run workflow** once.
-6. Verify both `https://hunter118.github.io/e1002-ai-news/manifest.json` and the six `pages/page_N.epd` URLs.
+6. Verify `https://hunter118.github.io/e1002-ai-news/manifest.json` and each listed `pages/page_N.epd` URL.
 
 The workflow tests first, generates into `public/`, checks asset counts and sizes, and only then uploads a Pages artifact. If RSS, OpenAI, validation, or rendering fails, deployment does not run and the previously deployed edition remains available.
 
@@ -196,7 +196,7 @@ The synchronous e-paper refresh is guarded by `displayRefreshing`, so button and
 
 No always-on local service is required. GitHub Actions performs news generation and gallery conversion, GitHub Pages serves news assets, the `gallery` branch serves album assets, and the powered E1002 polls both public delivery endpoints over Wi-Fi. The Mac, local virtual environment, `.env`, and development servers may all be shut down after deployment. Autonomous operation still depends on device power/Wi-Fi, an enabled GitHub Actions/Pages setup, a valid `OPENAI_API_KEY` repository secret, and availability of the external cloud services.
 
-No SD card is required. One cached device page is exactly 192,000 bytes. Ten gallery pages need 1.92 MB, or 3.84 MB while old and new A/B generations coexist. News A/B adds about 2.30 MB, for roughly 6.14 MB total. The device reserves a 28 MB LittleFS partition, so the current 20-photo firmware limit remains comfortably within internal flash capacity.
+No SD card is required. One cached device page is exactly 192,000 bytes. Ten gallery pages need 1.92 MB, or 3.84 MB while old and new A/B generations coexist. The maximum six news pages add about 2.30 MB across A/B slots, for roughly 6.14 MB total. The device reserves a 28 MB LittleFS partition, so the current 20-photo firmware limit remains comfortably within internal flash capacity.
 
 ## Troubleshooting
 

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import date, datetime
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 class FeedIssue(BaseModel):
@@ -76,8 +76,15 @@ class Manifest(BaseModel):
     schema_version: int = 1
     generated_at: datetime
     source_issue: str
-    source_issues: list[str]
+    source_issues: list[str] = Field(min_length=1, max_length=1)
     generation_id: str
-    page_count: int = 6
-    pages: list[ManifestPage]
+    page_count: int = Field(ge=1, le=6)
+    pages: list[ManifestPage] = Field(min_length=1, max_length=6)
 
+    @model_validator(mode="after")
+    def page_count_matches_pages(self) -> "Manifest":
+        if self.page_count != len(self.pages):
+            raise ValueError("page_count must match the number of pages")
+        if self.source_issues != [self.source_issue]:
+            raise ValueError("source_issues must contain only today's primary issue")
+        return self

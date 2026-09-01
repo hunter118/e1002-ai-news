@@ -13,7 +13,7 @@ from .models import CuratedEdition, CuratedStory
 LOGGER = logging.getLogger(__name__)
 WIDTH: Final = 800
 HEIGHT: Final = 480
-PAGE_COUNT: Final = 6
+MAX_PAGE_COUNT: Final = 6
 STORIES_PER_PAGE: Final = 3
 RAW_PAGE_SIZE: Final = WIDTH * HEIGHT // 2
 
@@ -110,7 +110,6 @@ def _draw_story(
 
     draw.rectangle((left, top + 10, left + 6, top + 32), fill=accent)
     draw.text((left + 15, top + 8), story.category, fill=accent, font=category_font)
-    draw.text((right - 50, top + 9), f"{story.importance:.2f}", fill=BLACK, font=source_font, anchor="ra")
 
     title = _ellipsis(draw, story.title, title_font, right - left)
     draw.text((left, top + 36), title, fill=BLACK, font=title_font)
@@ -157,10 +156,16 @@ def pack_e1002_4bpp(image: Image.Image) -> bytes:
     return bytes(output)
 
 
-def render_page(stories: list[CuratedStory], page_index: int, issue_date: str, font_path: str | None = None) -> Image.Image:
-    if len(stories) != STORIES_PER_PAGE:
-        raise ValueError("Each page must contain exactly three stories")
-    if not 1 <= page_index <= PAGE_COUNT:
+def render_page(
+    stories: list[CuratedStory],
+    page_index: int,
+    page_count: int,
+    issue_date: str,
+    font_path: str | None = None,
+) -> Image.Image:
+    if not 1 <= len(stories) <= STORIES_PER_PAGE:
+        raise ValueError("Each page must contain one to three stories")
+    if not 1 <= page_index <= page_count <= MAX_PAGE_COUNT:
         raise ValueError("Page index out of range")
     font_path = font_path or find_cjk_font()
     image = Image.new("RGB", (WIDTH, HEIGHT), WHITE)
@@ -169,7 +174,7 @@ def render_page(stories: list[CuratedStory], page_index: int, issue_date: str, f
     meta_font = _font(font_path, 17)
     draw.text((29, 10), "AI DAILY", fill=BLACK, font=header_font)
     draw.text((WIDTH // 2, 23), issue_date.upper(), fill=BLACK, font=meta_font, anchor="mm")
-    draw.text((WIDTH - 29, 23), f"{page_index} / {PAGE_COUNT}", fill=BLACK, font=meta_font, anchor="rm")
+    draw.text((WIDTH - 29, 23), f"{page_index} / {page_count}", fill=BLACK, font=meta_font, anchor="rm")
     draw.line((29, 51, WIDTH - 29, 51), fill=BLACK, width=2)
     for index, story in enumerate(stories):
         _draw_story(draw, story, 53 + index * 142, font_path)
@@ -182,14 +187,21 @@ def render_edition(
     issue_date: str,
     font_path: str | None = None,
 ) -> list[tuple[Path, Path]]:
-    if len(edition.stories) != PAGE_COUNT * STORIES_PER_PAGE:
-        raise ValueError("Edition must contain exactly 18 stories")
+    if not 1 <= len(edition.stories) <= MAX_PAGE_COUNT * STORIES_PER_PAGE:
+        raise ValueError("Edition must contain between 1 and 18 stories")
+    page_count = (len(edition.stories) + STORIES_PER_PAGE - 1) // STORIES_PER_PAGE
     output = Path(output_dir)
     output.mkdir(parents=True, exist_ok=True)
     rendered: list[tuple[Path, Path]] = []
-    for page_index in range(1, PAGE_COUNT + 1):
+    for page_index in range(1, page_count + 1):
         start = (page_index - 1) * STORIES_PER_PAGE
-        page = render_page(edition.stories[start : start + STORIES_PER_PAGE], page_index, issue_date, font_path)
+        page = render_page(
+            edition.stories[start : start + STORIES_PER_PAGE],
+            page_index,
+            page_count,
+            issue_date,
+            font_path,
+        )
         preview_path = output / f"page_{page_index}.png"
         raw_path = output / f"page_{page_index}.epd"
         page.save(preview_path, format="PNG", optimize=True)
@@ -198,5 +210,8 @@ def render_edition(
         if raw_path.stat().st_size != RAW_PAGE_SIZE:
             raise ValueError(f"Invalid packed page size: {raw_path}")
         rendered.append((preview_path, raw_path))
-    LOGGER.info("6 rendered pages validated at 800x480, three stories per page")
+    LOGGER.info(
+        "%d rendered pages validated at 800x480, up to three stories per page",
+        page_count,
+    )
     return rendered

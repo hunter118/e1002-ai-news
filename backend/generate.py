@@ -17,7 +17,7 @@ from .curate import curate_stories, deterministic_edition
 from .fetch_juya import RSS_URL, choose_primary_issue, fetch_rss, load_rss_file, parse_rss
 from .models import Manifest, ManifestPage
 from .parse_issue import collect_candidate_stories
-from .render import HEIGHT, PAGE_COUNT, RAW_PAGE_SIZE, WIDTH, render_edition
+from .render import HEIGHT, MAX_PAGE_COUNT, RAW_PAGE_SIZE, WIDTH, render_edition
 
 LOGGER = logging.getLogger(__name__)
 SINGAPORE = ZoneInfo("Asia/Singapore")
@@ -56,7 +56,9 @@ def generate(
     load_dotenv(PROJECT_ROOT / ".env", override=False)
     xml_data = load_rss_file(rss_file) if rss_file else fetch_rss(RSS_URL)
     issues = parse_rss(xml_data)
-    primary_index, _ = choose_primary_issue(issues)
+    primary_index, used_fallback = choose_primary_issue(issues)
+    if used_fallback:
+        raise ValueError("Today's Juya issue is unavailable; refusing to publish an older issue")
     primary = issues[primary_index]
     candidates, source_issues = collect_candidate_stories(issues, primary_index)
 
@@ -101,10 +103,11 @@ def generate(
             generation_id=_generation_id(
                 primary.issue_date.isoformat(), curated_payload, [page.sha256 for page in pages]
             ),
+            page_count=len(pages),
             pages=pages,
         )
-        if manifest.page_count != PAGE_COUNT or len(manifest.pages) != PAGE_COUNT:
-            raise ValueError("Manifest must contain exactly six pages")
+        if not 1 <= manifest.page_count <= MAX_PAGE_COUNT or len(manifest.pages) != manifest.page_count:
+            raise ValueError("Manifest must contain between one and six pages")
         _write_json(staging_root / "manifest.json", manifest.model_dump(mode="json"))
 
         destination_pages = public_dir / "pages"

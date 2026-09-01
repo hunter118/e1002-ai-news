@@ -73,6 +73,7 @@ struct ModeState {
               const char *manifestRelativeValue,
               const char *preferenceKeyValue,
               uint8_t requiredPageCountValue,
+              uint8_t maximumPageCountValue,
               bool allowEmptyValue,
               bool allowIntervalOffValue,
               uint32_t defaultIntervalValue)
@@ -82,6 +83,7 @@ struct ModeState {
           manifestRelative(manifestRelativeValue),
           preferenceKey(preferenceKeyValue),
           requiredPageCount(requiredPageCountValue),
+          maximumPageCount(maximumPageCountValue),
           allowEmpty(allowEmptyValue),
           allowIntervalOff(allowIntervalOffValue),
           defaultIntervalMs(defaultIntervalValue),
@@ -93,6 +95,7 @@ struct ModeState {
     const char *manifestRelative;
     const char *preferenceKey;
     uint8_t requiredPageCount;
+    uint8_t maximumPageCount;
     bool allowEmpty;
     bool allowIntervalOff;
     uint32_t defaultIntervalMs;
@@ -156,9 +159,10 @@ bool interactiveSession = false;
 DisplayMode currentMode = DisplayMode::News;
 uint32_t lastButtonActivityAt = 0;
 ModeState newsState(
-    "NEWS", "news", NEWS_BASE_URL, "manifest.json", "news_slot", 6, false, false, NEWS_INTERVAL_MS);
+    "NEWS", "news", NEWS_BASE_URL, "manifest.json", "news_slot", 0, 6, false, false, NEWS_INTERVAL_MS);
 ModeState galleryState(
-    "PHOTO ALBUM", "photo", GALLERY_BASE_URL, "manifest.json", "photo_slot", 0, true, true, GALLERY_INTERVAL_MS);
+    "PHOTO ALBUM", "photo", GALLERY_BASE_URL, "manifest.json", "photo_slot", 0, MAX_PAGE_COUNT, true, true,
+    GALLERY_INTERVAL_MS);
 DebouncedButton previousButton(PIN_PREVIOUS);
 DebouncedButton nextButton(PIN_NEXT);
 DebouncedButton modeButton(PIN_MODE);
@@ -218,9 +222,7 @@ String resolveUrl(const char *baseUrlValue, const String &value) {
 }
 
 bool validPageCount(const ModeState &state, int count) {
-    if (count < 0 || count > MAX_PAGE_COUNT) return false;
-    if (state.requiredPageCount > 0) return count == state.requiredPageCount;
-    return state.allowEmpty ? true : count > 0;
+    return pageCountAllowed(count, state.requiredPageCount, state.maximumPageCount, state.allowEmpty);
 }
 
 uint32_t validInterval(const ModeState &state, uint32_t value, uint32_t fallback) {
