@@ -139,7 +139,7 @@ Before `public/` is replaced, the generator enforces:
 
 ## GitHub Actions and Pages
 
-The workflow runs hourly from 08:30 through 14:30 Singapore time (`30 0-6 * * *` UTC). Each scheduled run first reads Juya's RSS and the currently deployed manifest using only the Python standard library. Before today's issue exists it exits without installing dependencies or calling OpenAI; after today's source URL is already deployed, later runs also exit. Thus only the first run that observes a new same-day issue performs generation. This accommodates variable RSS publication times without repeatedly spending API tokens. `workflow_dispatch` remains an explicit forced generation path.
+The workflow checks every 20 minutes from 08:07 through 15:47 Singapore time (`7,27,47 0-7 * * *` UTC). The deliberately non-round minutes reduce contention in GitHub's scheduler. Each scheduled run first reads Juya's RSS and the currently deployed manifest using only the Python standard library. Before today's issue exists it exits without installing dependencies or calling OpenAI; after today's source URL is already deployed, later runs also exit. Thus only the first run that observes a new same-day issue performs generation. This accommodates variable RSS publication times and delayed or dropped schedule events without repeatedly spending API tokens. `workflow_dispatch` remains an explicit forced generation path.
 
 Repository setup:
 

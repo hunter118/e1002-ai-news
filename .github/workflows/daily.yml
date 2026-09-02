@@ -2,9 +2,10 @@ name: Generate and deploy AI Daily
 
 on:
   schedule:
-    # Hourly 08:30-14:30 Asia/Singapore. A cheap RSS preflight allows only the
-    # first run that sees today's issue to use OpenAI and deploy.
-    - cron: "30 0-6 * * *"
+    # Every 20 minutes from 08:07 through 15:47 Asia/Singapore. The non-round
+    # minutes reduce GitHub scheduler congestion, while a cheap RSS preflight
+    # allows only the first run that sees today's issue to use OpenAI and deploy.
+    - cron: "7,27,47 0-7 * * *"
   workflow_dispatch:
 
 permissions:
